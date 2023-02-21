@@ -52,47 +52,46 @@ io.on("connection", (socket) => {
     socket["nickname"] = userid;
   });
 
-  const numClients = io.engine.clientsCount;
   socket.on("join_room", (roomName) => {
     socket.join(roomName);
     socket.to(roomName).emit("welcome", socket["nickname"]);
-    socket.on("offer", async (offer, offerid, answerid) => {
-      console.log("offer");
-      const usersocket = Array.from(io.sockets.sockets.values()).find(
-        (s) => s.nickname === answerid
-      );
-      if (usersocket) {
-        usersocket.emit("offer", offer, offerid, answerid);
-      } else {
-        console.log("user is not exist");
-      }
-    });
-    console.log("answeron");
-    socket.on("answer", async (answer, offerid, answerid) => {
-      console.log(offerid, answerid);
-      const usersocket = Array.from(io.sockets.sockets.values()).find(
-        (s) => s.nickname === offerid
-      );
-      console.log(usersocket);
-      if (usersocket) {
-        usersocket.emit("answer", answer, answerid);
-      } else {
-        console.log("user is not exist");
-      }
-    });
+  });
 
-    socket.on("ice", (ice, targetid) => {
-      if (ice) {
-        socket.to(roomName).emit("ice", ice, targetid);
-      }
-    });
+  socket.on("offer", async (offer, offerid, answerid) => {
+    console.log("offer");
+    const usersocket = Array.from(io.sockets.sockets.values()).find(
+      (s) => s.nickname === answerid
+    );
+    if (usersocket) {
+      usersocket.emit("offer", offer, offerid, answerid);
+    } else {
+      console.log("user is not exist");
+    }
+  });
+  socket.on("answer", async (answer, offerid, answerid) => {
+    console.log("answer");
+    const usersocket = Array.from(io.sockets.sockets.values()).find(
+      (s) => s.nickname === offerid
+    );
+    if (usersocket) {
+      usersocket.emit("answer", answer, answerid);
+    } else {
+      console.log("user is not exist");
+    }
+  });
+
+  socket.on("ice", (ice, targetid, roomName) => {
+    if (ice) {
+      socket.to(roomName).emit("ice", ice, targetid);
+    }
   });
 
   socket.on("leave", (targetid, roomName) => {
     socket.to(roomName).emit("leave", targetid);
     socket.leave(roomName);
-    const roomSize = io.sockets.adapter.rooms.get(roomName).size;
-    console.log(roomSize);
+  });
+  socket.on("test", () => {
+    socket.emit("test");
   });
 });
 
