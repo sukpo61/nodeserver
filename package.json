@@ -6,7 +6,8 @@
   "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon"
+    "dev": "nodemon",
+    "start": "json-server --watch db.json --port 8000"
   },
   "keywords": [],
   "author": "",
@@ -19,7 +20,9 @@
     "nodemon": "^2.0.20"
   },
   "dependencies": {
+    "body-parser": "^1.20.1",
     "express": "^4.18.2",
+    "json-server": "^0.17.1",
     "pug": "^3.0.2",
     "socket.io": "^4.6.0",
     "ws": "^8.12.0"
