@@ -37,28 +37,112 @@ function publicRooms() {
       adapter: { sids, rooms },
     },
   } = io;
-  const publicRooms = [];
-  rooms.forEach((_, key) => {
-    if (sids.get(key) === undefined) {
-      publicRooms.push(key);
+  rooms.forEach((value, key) => {
+    if (sids.get(key) !== undefined) {
+      rooms.delete(key);
     }
   });
-  return publicRooms;
+  return rooms;
 }
-//public 방을 찾기 위해 개인방이 포함된 방리스트에서 소캣 아이디를 가진 개인 방을 뺌
+
+// if (
+//   getUserInfo(value)
+//     .map((e) => e.userid)
+//     .includes(currentuserid)
+// ) {
+//   channelrooms.push({
+//     name: key.split("/")[1],
+//     userinfo: getUserInfo(value),
+//     type: "current",
+//   });
+// } else {
+//   channelrooms.push({
+//     name: key.split("/")[1],
+//     userinfo: getUserInfo(value),
+//     type: "other",
+//   });
+// }
+
+function getChannelRooms(channelName) {
+  const channelrooms = [];
+  const Allrooms = io.sockets.adapter.rooms;
+
+  function getUserInfo(value) {
+    const userinfo = [];
+    value.forEach((e) => {
+      const usersocket = Array.from(io.sockets.sockets.values()).find(
+        (s) => s.id === e
+      );
+      userinfo.push({
+        userid: usersocket.nickname,
+      });
+    });
+    return userinfo;
+  }
+  Allrooms.forEach((value, key) => {
+    if (key.split("/")[0] === channelName && key.split("/")[1]) {
+      channelrooms.push({
+        name: key.split("/")[1],
+        userinfo: getUserInfo(value),
+      });
+    }
+  });
+  return channelrooms;
+}
+
+function getChannelsockets(channelName) {
+  const channelusers = [];
+  const Allrooms = io.sockets.adapter.rooms;
+
+  function getuserSockets(value) {
+    const channel = [];
+    value.map((e) => {
+      const usersocket = Array.from(io.sockets.sockets.values()).find(
+        (s) => s.id === e
+      );
+      channel.push(usersocket);
+    });
+    return channel;
+  }
+
+  Allrooms.forEach((room, key) => {
+    if (key.split("/")[0] === channelName) {
+      room.forEach((value) => {
+        channelusers.push(value);
+      });
+    }
+  });
+  return getuserSockets(channelusers);
+}
+
+//public 방을 찾기 위해 개인방이 포함된 방리스트에서d 소캣 아이디를 가진 개인 방을 뺌
 
 io.on("connection", (socket) => {
   socket.on("userid", (userid) => {
     socket["nickname"] = userid;
   });
 
-  socket.on("join_room", (roomName) => {
-    socket.join(roomName);
-    socket.to(roomName).emit("welcome", socket["nickname"]);
+  socket.on("requestrooms", (channelName) => {
+    socket.join(`${channelName}/`);
+    socket.emit("requestrooms", getChannelRooms(channelName));
   });
 
+  socket.on("join_room", (roomdata) => {
+    const roomname = `${roomdata.channelName}/${roomdata.roomtitle}`;
+
+    socket.join(roomname);
+    const channelsockets = getChannelsockets(roomdata.channelName);
+    channelsockets.map((usersocket) => {
+      usersocket.emit(
+        "updaterooms",
+        getChannelRooms(roomdata.channelName, socket["nickname"])
+      );
+    });
+    socket.to(roomname).emit("welcome", socket["nickname"]);
+  });
+  console.log("socket on");
   socket.on("offer", async (offer, offerid, answerid) => {
-    console.log("offer");
+    console.log("offerd");
     const usersocket = Array.from(io.sockets.sockets.values()).find(
       (s) => s.nickname === answerid
     );
@@ -69,7 +153,6 @@ io.on("connection", (socket) => {
     }
   });
   socket.on("answer", async (answer, offerid, answerid) => {
-    console.log("answer");
     const usersocket = Array.from(io.sockets.sockets.values()).find(
       (s) => s.nickname === offerid
     );
@@ -80,18 +163,22 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("ice", (ice, targetid, roomName) => {
+  socket.on("ice", (ice, targetid, roomdata) => {
+    const roomname = `${roomdata.channelName}/${roomdata.roomtitle}`;
     if (ice) {
-      socket.to(roomName).emit("ice", ice, targetid);
+      socket.to(roomname).emit("ice", ice, targetid);
     }
   });
 
-  socket.on("leave", (targetid, roomName) => {
-    socket.to(roomName).emit("leave", targetid);
-    socket.leave(roomName);
-  });
-  socket.on("test", () => {
-    socket.emit("test");
+  socket.on("leave", (targetid, roomdata) => {
+    const roomname = `${roomdata.channelName}/${roomdata.roomtitle}`;
+    socket.to(roomname).emit("leave", targetid);
+    socket.leave(roomname);
+    socket.join(`${roomdata.channelName}`);
+    const channelsockets = getChannelsockets(roomdata.channelName);
+    channelsockets.map((usersocket) => {
+      usersocket.emit("updaterooms", getChannelRooms(roomdata.channelName));
+    });
   });
 });
 
