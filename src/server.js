@@ -63,7 +63,7 @@ function publicRooms() {
 //   });
 // }
 
-function getChannelRooms(channelName) {
+function getChannelRooms(channelId) {
   const channelrooms = [];
   const Allrooms = io.sockets.adapter.rooms;
 
@@ -80,7 +80,7 @@ function getChannelRooms(channelName) {
     return userinfo;
   }
   Allrooms.forEach((value, key) => {
-    if (key.split("/")[0] === channelName && key.split("/")[1]) {
+    if (key.split("/")[0] === channelId && key.split("/")[1]) {
       channelrooms.push({
         name: key.split("/")[1],
         userinfo: getUserInfo(value),
@@ -90,7 +90,7 @@ function getChannelRooms(channelName) {
   return channelrooms;
 }
 
-function getChannelsockets(channelName) {
+function getChannelsockets(channelId) {
   const channelusers = [];
   const Allrooms = io.sockets.adapter.rooms;
 
@@ -106,13 +106,63 @@ function getChannelsockets(channelName) {
   }
 
   Allrooms.forEach((room, key) => {
-    if (key.split("/")[0] === channelName) {
+    if (key.split("/")[0] === channelId) {
       room.forEach((value) => {
         channelusers.push(value);
       });
     }
   });
   return getuserSockets(channelusers);
+}
+
+function getFriendChannel(userid) {
+  let roomname = null;
+  const usersocket = Array.from(io.sockets.sockets.values()).find(
+    (s) => s.nickname === userid
+  );
+  if (usersocket) {
+    publicRooms().forEach((room, roomId) => {
+      room.forEach((value) => {
+        if (usersocket?.id === value && roomId.split("/")[1]) {
+          roomname = roomId;
+        }
+      });
+    });
+  }
+  return roomname;
+}
+
+// room.forEach((value) => {
+//   if (usersocket?.id === value && roomId.split("/")[1]) {
+//     roomname = roomId;
+//   }
+// });
+
+function getAllChannelInfo() {
+  let channelsinfo = [];
+
+  publicRooms().forEach((room, roomId) => {
+    let roomchannelid = roomId.split("/")[0];
+    if (roomId.split("/")[1]) {
+      if (
+        channelsinfo.map((e) => e.channelid).includes(roomchannelid) &&
+        channelsinfo !== []
+      ) {
+        channelsinfo?.map((channelinfo, index) => {
+          if ((channelinfo.channelid = roomchannelid)) {
+            channelinfo.usercount = +room.size;
+            channelsinfo[index] = channelinfo;
+          }
+        });
+      } else {
+        channelsinfo = [
+          ...channelsinfo,
+          { channelid: roomchannelid, usercount: room.size },
+        ];
+      }
+    }
+  });
+  return channelsinfo;
 }
 
 //public 방을 찾기 위해 개인방이 포함된 방리스트에서d 소캣 아이디를 가진 개인 방을 뺌
@@ -122,25 +172,42 @@ io.on("connection", (socket) => {
     socket["nickname"] = userid;
   });
 
-  socket.on("requestrooms", (channelName) => {
-    socket.join(`${channelName}/`);
-    socket.emit("requestrooms", getChannelRooms(channelName));
+  socket.on("getactivechannels", () => {
+    console.log(getAllChannelInfo());
+    socket.emit("getactivechannels", getAllChannelInfo());
   });
 
-  socket.on("join_room", (roomdata) => {
-    const roomname = `${roomdata.channelName}/${roomdata.roomtitle}`;
+  socket.on("requestrooms", (channelId) => {
+    socket.join(`${channelId}/`);
+    socket.emit("requestrooms", getChannelRooms(channelId));
+  });
+
+  socket.on("friendchannel", (userid) => {
+    socket.emit("friendchannel", getFriendChannel(userid), userid);
+  });
+
+  socket.on("join_room", (roomdata, targetid) => {
+    const roomname = `${roomdata.channelId}/${roomdata.roomtitle}`;
 
     socket.join(roomname);
-    const channelsockets = getChannelsockets(roomdata.channelName);
+    const channelsockets = getChannelsockets(roomdata.channelId);
     channelsockets.map((usersocket) => {
       usersocket.emit(
         "updaterooms",
-        getChannelRooms(roomdata.channelName, socket["nickname"])
+        getChannelRooms(roomdata.channelId, socket["nickname"])
       );
     });
     socket.to(roomname).emit("welcome", socket["nickname"]);
+
+    socket.once("disconnect", () => {
+      socket.to(roomname).emit("leave", targetid);
+      const channelsockets = getChannelsockets(roomdata.channelId);
+      channelsockets.map((usersocket) => {
+        usersocket.emit("updaterooms", getChannelRooms(roomdata.channelId));
+      });
+    });
   });
-  console.log("socket on");
+
   socket.on("offer", async (offer, offerid, answerid) => {
     console.log("offerd");
     const usersocket = Array.from(io.sockets.sockets.values()).find(
@@ -152,6 +219,7 @@ io.on("connection", (socket) => {
       console.log("user is not exist");
     }
   });
+
   socket.on("answer", async (answer, offerid, answerid) => {
     const usersocket = Array.from(io.sockets.sockets.values()).find(
       (s) => s.nickname === offerid
@@ -164,20 +232,20 @@ io.on("connection", (socket) => {
   });
 
   socket.on("ice", (ice, targetid, roomdata) => {
-    const roomname = `${roomdata.channelName}/${roomdata.roomtitle}`;
+    const roomname = `${roomdata.channelId}/${roomdata.roomtitle}`;
     if (ice) {
       socket.to(roomname).emit("ice", ice, targetid);
     }
   });
 
   socket.on("leave", (targetid, roomdata) => {
-    const roomname = `${roomdata.channelName}/${roomdata.roomtitle}`;
+    const roomname = `${roomdata.channelId}/${roomdata.roomtitle}`;
     socket.to(roomname).emit("leave", targetid);
     socket.leave(roomname);
-    socket.join(`${roomdata.channelName}`);
-    const channelsockets = getChannelsockets(roomdata.channelName);
+    socket.join(`${roomdata.channelId}`);
+    const channelsockets = getChannelsockets(roomdata.channelId);
     channelsockets.map((usersocket) => {
-      usersocket.emit("updaterooms", getChannelRooms(roomdata.channelName));
+      usersocket.emit("updaterooms", getChannelRooms(roomdata.channelId));
     });
   });
 });
