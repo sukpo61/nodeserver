@@ -45,24 +45,6 @@ function publicRooms() {
   return rooms;
 }
 
-// if (
-//   getUserInfo(value)
-//     .map((e) => e.userid)
-//     .includes(currentuserid)
-// ) {
-//   channelrooms.push({
-//     name: key.split("/")[1],
-//     userinfo: getUserInfo(value),
-//     type: "current",
-//   });
-// } else {
-//   channelrooms.push({
-//     name: key.split("/")[1],
-//     userinfo: getUserInfo(value),
-//     type: "other",
-//   });
-// }
-
 function getChannelRooms(channelId) {
   const channelrooms = [];
   const Allrooms = io.sockets.adapter.rooms;
@@ -84,6 +66,8 @@ function getChannelRooms(channelId) {
       channelrooms.push({
         name: key.split("/")[1],
         userinfo: getUserInfo(value),
+        usercount: roomsData.get(key).usercount,
+        password: roomsData.get(key).password,
       });
     }
   });
@@ -150,7 +134,7 @@ function getAllChannelInfo() {
       ) {
         channelsinfo?.map((channelinfo, index) => {
           if ((channelinfo.channelid = roomchannelid)) {
-            channelinfo.usercount = +room.size;
+            channelinfo.usercount = channelinfo.usercount + room.size;
             channelsinfo[index] = channelinfo;
           }
         });
@@ -165,6 +149,8 @@ function getAllChannelInfo() {
   return channelsinfo;
 }
 
+let roomsData = new Map();
+
 //public 방을 찾기 위해 개인방이 포함된 방리스트에서d 소캣 아이디를 가진 개인 방을 뺌
 
 io.on("connection", (socket) => {
@@ -173,11 +159,11 @@ io.on("connection", (socket) => {
   });
 
   socket.on("getactivechannels", () => {
-    console.log(getAllChannelInfo());
     socket.emit("getactivechannels", getAllChannelInfo());
   });
 
   socket.on("requestrooms", (channelId) => {
+    console.log("requestrooms", channelId);
     socket.join(`${channelId}/`);
     socket.emit("requestrooms", getChannelRooms(channelId));
   });
@@ -188,7 +174,10 @@ io.on("connection", (socket) => {
 
   socket.on("join_room", (roomdata, targetid) => {
     const roomname = `${roomdata.channelId}/${roomdata.roomtitle}`;
-
+    roomsData.set(roomname, {
+      usercount: roomdata.usercount,
+      password: roomdata.password,
+    });
     socket.join(roomname);
     const channelsockets = getChannelsockets(roomdata.channelId);
     channelsockets.map((usersocket) => {
@@ -200,6 +189,8 @@ io.on("connection", (socket) => {
     socket.to(roomname).emit("welcome", socket["nickname"]);
 
     socket.once("disconnect", () => {
+      const room = io.sockets.adapter.rooms.get(roomname);
+      console.log(roomname);
       socket.to(roomname).emit("leave", targetid);
       const channelsockets = getChannelsockets(roomdata.channelId);
       channelsockets.map((usersocket) => {
@@ -240,13 +231,21 @@ io.on("connection", (socket) => {
 
   socket.on("leave", (targetid, roomdata) => {
     const roomname = `${roomdata.channelId}/${roomdata.roomtitle}`;
+    const room = io.sockets.adapter.rooms.get(roomname);
+    // if (room.size === 1) {
+    //   roomsData.delete(roomname);
+    //   console.log(roomsData);
+    // }
     socket.to(roomname).emit("leave", targetid);
     socket.leave(roomname);
-    socket.join(`${roomdata.channelId}`);
     const channelsockets = getChannelsockets(roomdata.channelId);
     channelsockets.map((usersocket) => {
       usersocket.emit("updaterooms", getChannelRooms(roomdata.channelId));
     });
+  });
+  socket.on("channelleave", (channelId) => {
+    console.log("channelleave", channelId);
+    socket.leave(`${channelId}/`);
   });
 });
 
